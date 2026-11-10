@@ -2,7 +2,28 @@
 import {createClient} from 'https://esm.sh/@supabase/supabase-js@2.57.0';
 const sb=createClient('https://tdsrqmpfdvntybdlvejy.supabase.co','sb_publishable_MIYryZDKmU4cGMIGdXojnA_GQ5qmpOO',{auth:{flowType:'pkce',detectSessionInUrl:true}});
 const $=s=>document.querySelector(s), esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-$('#login-form').addEventListener('submit',async e=>{e.preventDefault();$('#send').disabled=true;$('#login-message').textContent='Envoi en cours…';const email=$('#email').value.trim();const {error}=await sb.auth.signInWithOtp({email,options:{emailRedirectTo:location.origin+location.pathname,shouldCreateUser:false}});$('#login-message').textContent=error?'Connexion impossible : '+error.message:'Si ce compte est autorisé, un code de connexion vient de lui être envoyé.';if(!error)$('#otp-form').hidden=false;$('#send').disabled=false});
+const loginStatus=$('#login-message'),sendButton=$('#send'),otpForm=$('#otp-form');let loginSending=false,loginCooldownUntil=0;
+function loginCooldown(seconds){loginCooldownUntil=Date.now()+seconds*1000;sendButton.disabled=true;const tick=()=>{const remaining=Math.ceil((loginCooldownUntil-Date.now())/1000);if(remaining>0){sendButton.textContent='Nouvelle demande dans '+remaining+' s';sendButton.disabled=true}else{sendButton.textContent='Recevoir un nouveau code';sendButton.disabled=loginSending;clearInterval(timer)}};const timer=setInterval(tick,1000);tick();}
+$('#login-form').addEventListener('submit',async e=>{
+ e.preventDefault();if(loginSending||Date.now()<loginCooldownUntil)return;
+ loginSending=true;sendButton.disabled=true;sendButton.textContent='Envoi en cours…';
+ loginStatus.textContent='Demande envoyée à Supabase. Patientez quelques instants, sans cliquer une seconde fois.';
+ const email=$('#email').value.trim();
+ try{
+  const {error}=await sb.auth.signInWithOtp({email,options:{emailRedirectTo:location.origin+location.pathname,shouldCreateUser:false}});
+  if(error){
+   const seconds=Number(error.message?.match(/after (\\d+) seconds?/i)?.[1]||0);
+   if(seconds){otpForm.hidden=false;loginStatus.textContent='Une demande récente a déjà été enregistrée. Vérifiez la boîte de réception et les indésirables de '+email+'. Vous pouvez saisir le code reçu ci-dessous.';loginCooldown(seconds);}
+   else{loginStatus.textContent='Envoi impossible : '+error.message;sendButton.textContent='Réessayer';}
+  }else{
+   otpForm.hidden=false;
+   loginStatus.textContent='Code demandé pour '+email+'. Vérifiez votre boîte de réception et les indésirables. Saisissez le code ci-dessous ou utilisez le lien reçu. Ne demandez pas un deuxième code.';
+   loginCooldown(60);
+   otpForm.scrollIntoView({behavior:'smooth',block:'center'});
+  }
+ }catch(err){loginStatus.textContent='Connexion momentanément indisponible : '+(err?.message||'Réessayez.');sendButton.textContent='Réessayer';}
+ finally{loginSending=false;if(Date.now()>=loginCooldownUntil)sendButton.disabled=false;}
+});
 $('#otp-form').addEventListener('submit',async e=>{e.preventDefault();$('#verify').disabled=true;$('#otp-message').textContent='Vérification du code…';const {error}=await sb.auth.verifyOtp({email:$('#email').value.trim(),token:$('#otp').value.trim(),type:'email'});$('#otp-message').textContent=error?'Code invalide ou expiré : '+error.message:'Code validé.';$('#verify').disabled=false;if(!error){$('#otp-message').textContent='Code accepté. Chargement de l’administration…';try{await refresh()}catch(e){$('#otp-message').textContent='Code accepté, mais chargement impossible : '+(e?.message||String(e))}}});
 $('#logout').addEventListener('click',async()=>{await sb.auth.signOut();$('#private').hidden=true;$('#login').hidden=false});
 async function refresh(){const {data:{session}}=await sb.auth.getSession();if(!session){$('#private').hidden=true;$('#login').hidden=false;return}$('#identity').textContent='Vérification des autorisations…';$('#otp-message').textContent='Connexion établie. Vérification des autorisations…';const res=await fetch('https://tdsrqmpfdvntybdlvejy.supabase.co/functions/v1/rp-admin-organismes',{headers:{Authorization:'Bearer '+session.access_token,apikey:'sb_publishable_MIYryZDKmU4cGMIGdXojnA_GQ5qmpOO'}}).catch(()=>null);if(!res){$('#login-message').textContent='Code accepté, mais connexion au serveur indisponible. Vérifiez le réseau et réessayez.';return}const data=await res.json().catch(()=>({}));if(!res.ok){$('#private').hidden=true;$('#login').hidden=false;$('#login-message').textContent=data.error||'Accès non autorisé.';return}$('#login').hidden=true;$('#private').hidden=false;loadMembers();loadUsers();loadEligibility().then(loadDrafts);loadAudit();$('#otp-message').textContent='';$('#identity').textContent='Administrateur connecté : '+(session.user.email||'')+' · '+data.role;const orgs=data.organismes||[];$('#org-count').textContent=orgs.length;$('#user-count').textContent=orgs.reduce((n,o)=>n+o.utilisateurs_actifs,0);$('#odoo-count').textContent=orgs.filter(o=>o.odoo==='GO').length;$('#org-list').innerHTML=orgs.map(o=>'<tr><td>'+esc(o.nom)+'</td><td>'+esc(o.offre||'Non renseignée')+'</td><td>'+esc(o.utilisateurs_actifs)+' / '+esc(o.quota??'À définir')+'</td><td>'+esc(o.odoo)+'</td><td>'+esc(o.date_debut)+' → '+esc(o.date_fin)+'</td></tr>').join('')||'<tr><td colspan="5">Aucun organisme.</td></tr>';$('#data-message').textContent='Données réelles en lecture seule, récupérées via un serveur autorisé.'}
