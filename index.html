@@ -203,18 +203,19 @@ async function loadUsers(){
 
 let directInviteChoices=[];
 function renderDirectInvite(){
- const eligible=directInviteChoices.filter(o=>o.eligible);
+ const eligible=directInviteChoices.filter(o=>o.eligible||o.peut_renvoyer);
  const selected=eligible.length===1?eligible[0]:null;
  const name=$('#direct-invite-name'),details=$('#direct-invite-details'),button=$('#direct-invite-button');
  button.disabled=!selected?.email_contact;
- name.textContent=selected?selected.nom+' · '+String(selected.offre||'').toUpperCase():eligible.length?'Plusieurs contrats éligibles':'Aucun contrat éligible';
- details.textContent=selected?'Adresse Odoo : '+selected.email_contact+' · '+selected.utilisateurs_actifs+' / '+selected.quota+' accès utilisés. Vérifiez le bénéficiaire.':eligible.length?'Plusieurs contrats éligibles : utilisez les anciens brouillons dans les détails.':'Vérifiez le GO et le quota.';
+ button.textContent=selected?.peut_renvoyer?'Renvoyer le lien de connexion':'Envoyer l’invitation';
+ name.textContent=selected?selected.nom+' · '+String(selected.offre||'').toUpperCase():eligible.length?'Plusieurs contrats disponibles':'Aucun contrat disponible';
+ details.textContent=selected?'Adresse Odoo : '+selected.email_contact+' · '+selected.utilisateurs_actifs+' / '+selected.quota+' accès utilisés. '+(selected.peut_renvoyer?'Compte déjà affecté : le renvoi ne consomme aucune place.':'Vérifiez le bénéficiaire.'):eligible.length?'Plusieurs contrats éligibles : utilisez les anciens brouillons dans les détails.':'Vérifiez le GO et le quota.';
 }
 $('#direct-invite-button').addEventListener('click',async()=>{
- const eligible=directInviteChoices.filter(o=>o.eligible);
+ const eligible=directInviteChoices.filter(o=>o.eligible||o.peut_renvoyer);
  const selected=eligible.length===1?eligible[0]:null;
  if(!selected)return;
- if(!confirm('Envoyer une véritable invitation à '+selected.email_contact+' pour '+selected.offre+' ?'))return;
+ if(!confirm((selected.peut_renvoyer?'Renvoyer un lien de connexion à ':'Envoyer une véritable invitation à ')+selected.email_contact+' pour '+selected.offre+' ?'))return;
  const btn=$('#direct-invite-button');btn.disabled=true;
  $('#direct-invite-status').textContent='Vérification et demande d’envoi…';
  try{
@@ -250,7 +251,7 @@ async function loadEligibility(){
   const tbody=document.createElement('tbody');
   for(const o of organismes){
    const tr=document.createElement('tr');
-   for(const value of [o.nom,o.offre||'Non définie',o.utilisateurs_actifs+' / '+(o.quota??'À définir'),o.go_odoo,o.eligible?'Éligible':'Bloquées : '+o.blocages.join(', ')]){const td=document.createElement('td');td.textContent=value;tr.append(td)}
+   for(const value of [o.nom,o.offre||'Non définie',o.utilisateurs_actifs+' / '+(o.quota??'À définir'),o.go_odoo,o.peut_renvoyer?'Renvoi du lien autorisé (compte déjà affecté)':o.eligible?'Éligible':'Bloquées : '+o.blocages.join(', ')]){const td=document.createElement('td');td.textContent=value;tr.append(td)}
    tbody.append(tr);
   }
   table.append(tbody);$('#eligibility-list').append(table);
