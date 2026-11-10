@@ -25,7 +25,7 @@ $('#odoo-refresh').addEventListener('click',async()=>{
 
 async function deviceRequest(action,utilisateur_id,appareil_id){
  const {data:{session}}=await sb.auth.getSession();if(!session)throw Error('Session expirée');
- const res=await fetch('https://tdsrqmpfdvntybdlvejy.supabase.co/functions/v1/rp-admin-appareils',{method:'POST',headers:{Authorization:'Bearer '+session.access_token,apikey:'sb_publishable_MIYryZDKmU4cGMIGdXojnA_GQ5qmpOO','Content-Type':'application/json'},body:JSON.stringify({action,utilisateur_id,appareil_id,abonnement_id:action==='suspend'?appareil_id:action==='draft_create'?utilisateur_id:undefined,email:action==='draft_create'?appareil_id:undefined,brouillon_id:action==='draft_cancel'?utilisateur_id:undefined})});
+ const res=await fetch('https://tdsrqmpfdvntybdlvejy.supabase.co/functions/v1/rp-admin-appareils',{method:'POST',headers:{Authorization:'Bearer '+session.access_token,apikey:'sb_publishable_MIYryZDKmU4cGMIGdXojnA_GQ5qmpOO','Content-Type':'application/json'},body:JSON.stringify({action,utilisateur_id,appareil_id,abonnement_id:action==='suspend'?appareil_id:action==='draft_create'?utilisateur_id:undefined,email:action==='draft_create'?appareil_id:undefined,brouillon_id:['draft_cancel','draft_check'].includes(action)?utilisateur_id:undefined})});
  const data=await res.json();if(!res.ok)throw Error(data.error||'Erreur serveur');return data;
 }
 async function loadDevices(){
@@ -110,7 +110,7 @@ async function loadDrafts(){
    const org=$('#draft-org').querySelector('option[value="'+d.abonnement_id+'"]')?.textContent||d.abonnement_id;
    for(const value of [d.email,org,d.statut]){const td=document.createElement('td');td.textContent=value;tr.append(td)}
    const td=document.createElement('td');
-   if(d.statut==='brouillon'){const b=document.createElement('button');b.type='button';b.textContent='Annuler';b.addEventListener('click',async()=>{if(!confirm('Annuler ce brouillon ?'))return;b.disabled=true;try{await deviceRequest('draft_cancel',d.id);await loadDrafts()}catch(e){$('#draft-status').textContent=e.message;b.disabled=false}});td.append(b)}
+   if(d.statut==='brouillon'){const verify=document.createElement('button');verify.type='button';verify.textContent='Vérifier avant envoi';verify.style.marginRight='8px';verify.addEventListener('click',async()=>{verify.disabled=true;try{const result=await deviceRequest('draft_check',d.id);$('#draft-status').textContent=result.eligible?'Contrat et quota éligibles pour '+d.email+'. Envoi non encore activé.':'Envoi bloqué pour '+d.email+' : '+result.blocages.join(', ')}catch(e){$('#draft-status').textContent='Vérification impossible : '+e.message}finally{verify.disabled=false}});td.append(verify);const b=document.createElement('button');b.type='button';b.textContent='Annuler';b.addEventListener('click',async()=>{if(!confirm('Annuler ce brouillon ?'))return;b.disabled=true;try{await deviceRequest('draft_cancel',d.id);await loadDrafts()}catch(e){$('#draft-status').textContent=e.message;b.disabled=false}});td.append(b)}
    tr.append(td);body.append(tr);
   }
   table.append(body);$('#draft-list').append(table);
